@@ -1,0 +1,202 @@
+# =================================
+# Build outputs
+# =================================
+build/
+out/
+bin/
+*.exe
+*.out
+x64/
+x86/
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+
+# =================================
+# CMake
+# =================================
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+install_manifest.txt
+compile_commands.json
+
+# =================================
+# Compiler outputs
+# =================================
+*.o
+*.obj
+*.ilk
+*.pdb
+*.ipdb
+*.iobj
+*.exp
+*.map
+
+# =================================
+# IDE and Editor files
+# =================================
+# Visual Studio
+.vs/
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.sln.docstates
+*.suo
+*.user
+*.userosscache
+*.sdf
+*.opensdf
+*.db
+*.opendb
+
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json.example
+!.vscode/launch.json.example
+
+# CLion
+.idea/
+cmake-build-*/
+*.iml
+
+# Qt Creator
+*.pro.user
+*.pro.user.*
+
+# Other editors
+*.swp
+*.swo
+*~
+*.orig
+
+# =================================
+# Dependencies and packages
+# =================================
+deps/
+third_party/
+external/
+vcpkg_installed/
+conaninfo.txt
+conanbuildinfo.*
+conan.lock
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+
+# =================================
+# Runtime and temporary files
+# =================================
+data/
+tmp/
+temp/
+*.tmp
+*.temp
+*.log
+logs/
+*.pid
+
+# =================================
+# Configuration files (development)
+# =================================
+/config/*.json
+/config/*.yaml
+/config/*.yml
+!/config/*.example.*
+
+# SSL certificates (development)
+*.pem
+*.key
+*.crt
+*.csr
+
+# =================================
+# Testing and coverage
+# =================================
+tests/*_test
+tests/*_tests
+tests/*.test
+benchmarks/*_benchmark
+benchmarks/*_bench
+*.gcda
+*.gcno
+*.gcov
+coverage/
+*.lcov
+*.prof
+*.gprof
+callgrind.out.*
+
+# =================================
+# Documentation builds
+# =================================
+docs/_build/
+docs/html/
+docs/latex/
+docs/man/
+docs/rtf/
+docs/xml/
+*.aux
+*.toc
+*.out
+*.log
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+
+# =================================
+# OS-specific files
+# =================================
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# =================================
+# Backup files
+# =================================
+*.bak
+*.backup
+
+# =================================
+# Package managers and tools
+# =================================
+.scannerwork/  # SonarQube
+bazel-*
+meson-private/
+meson-info/
+meson-logs/
+
+# =================================
+# Precompiled headers
+# =================================
+*.gch
+*.pch
+
+# =================================
+# Resource files
+# =================================
+*.res
