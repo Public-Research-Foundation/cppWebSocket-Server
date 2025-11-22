@@ -1,159 +1,230 @@
 #pragma once
+#ifndef WEBSOCKET_ENGINE_HPP
+#define WEBSOCKET_ENGINE_HPP
 
 #include "../common/Types.hpp"
-#include "../common/Macros.hpp"
-#include "interfaces/IEngine.hpp"
-#include "interfaces/IConfigurable.hpp"
+#include "../common/NonCopyable.hpp"
 #include "ServiceLocator.hpp"
-#include "ComponentManager.hpp"
-#include <atomic>
+#include "LifecycleManager.hpp"
 #include <memory>
-#include <unordered_map>
-#include <queue>
-#include <shared_mutex>
+#include <vector>
+#include <string>
 
 WEBSOCKET_NAMESPACE_BEGIN
 
-class Engine : public IEngine, public IConfigurable {
+// Forward declarations
+class IService;
+class IComponent;
+
+/**
+ * @class Engine
+ * @brief Core coordination engine that manages all system components and services
+ *
+ * The Engine serves as the central nervous system of the WebSocket server,
+ * responsible for:
+ * - Component lifecycle management
+ * - Dependency resolution and injection
+ * - System initialization and shutdown sequencing
+ * - Error handling and recovery
+ * - Inter-component communication
+ *
+ * Design Pattern: Facade + Mediator
+ */
+class Engine : public NonCopyable {
 public:
-    Engine();
-    ~Engine() override;
-
-    // IEngine implementation
-    Result initialize() override;
-    Result start() override;
-    Result stop() override;
-    Result shutdown() override;
-
-    bool isRunning() const override;
-    std::string getName() const override;
-    std::string getStatus() const override;
-
-    Result processMessage(const ByteBuffer& message, const std::string& sessionId = "") override;
-    Result processMessageAsync(const ByteBuffer& message, const std::string& sessionId = "", Callback completionCallback = nullptr) override;
-
-    Result broadcastMessage(const ByteBuffer& message) override;
-    Result broadcastMessage(const ByteBuffer& message, const std::function<bool(const std::string&)>& filter) override;
-
-    Result sendToSession(const std::string& sessionId, const ByteBuffer& message) override;
-    Result closeSession(const std::string& sessionId, uint16_t code = 1000, const std::string& reason = "") override;
-
-    size_t getConnectionCount() const override;
-    size_t getActiveSessionCount() const override;
-    void setMaxConnections(size_t max) override;
-    void setMaxSessions(size_t max) override;
-
-    size_t getMessageCount() const override;
-    size_t getQueuedMessageCount() const override;
-    void setMaxMessageSize(size_t max) override;
-    void setMaxQueueSize(size_t max) override;
-
-    void setProcessingThreads(size_t count) override;
-    void setQueueTimeout(uint32_t timeoutMs) override;
-    void enableCompression(bool enable) override;
-
-    void setOnMessageHandler(std::function<Result(const ByteBuffer&, const std::string&)> handler) override;
-    void setOnSessionCreatedHandler(std::function<void(const std::string&)> handler) override;
-    void setOnSessionClosedHandler(std::function<void(const std::string&, uint16_t, const std::string&)> handler) override;
-    void setOnErrorHandler(std::function<void(const Error&)> handler) override;
-
-    uint64_t getTotalMessagesProcessed() const override;
-    uint64_t getTotalBytesProcessed() const override;
-    double getAverageProcessingTime() const override;
-    std::unordered_map<std::string, uint64_t> getMessageTypeStatistics() const override;
-
-    Result pauseProcessing() override;
-    Result resumeProcessing() override;
-    bool isProcessingPaused() const override;
-
-    void setMemoryLimit(size_t limitBytes) override;
-    size_t getMemoryUsage() const override;
-    bool isMemoryLimitExceeded() const override;
-
-    // IService implementation
-    ServiceState getState() const override;
-    std::string getStatusMessage() const override;
-    std::string getVersion() const override;
-    std::string getDescription() const override;
-    std::vector<std::string> getDependencies() const override;
-    bool hasDependency(const std::string& serviceName) const override;
-    Error getLastError() const override;
-    void clearError() override;
-    bool hasError() const override;
-    void setConfiguration(const std::unordered_map<std::string, std::any>& config) override;
-    std::unordered_map<std::string, std::any> getConfiguration() const override;
-    std::chrono::steady_clock::time_point getStartTime() const override;
-    std::chrono::duration<double> getUptime() const override;
-    uint64_t getRequestCount() const override;
-    uint64_t getErrorCount() const override;
-
-    // IConfigurable implementation
-    void configure(const std::unordered_map<std::string, std::any>& config) override;
-    std::unordered_map<std::string, std::any> getCurrentConfig() const override;
-    bool validateConfig(const std::unordered_map<std::string, std::any>& config) const override;
-    void onConfigChanged(const std::string& key, const std::any& value) override;
-
-private:
-    WEBSOCKET_DISABLE_COPY(Engine)
-
-        struct MessageTask {
-        ByteBuffer message;
-        std::string sessionId;
-        Callback completionCallback;
-        std::chrono::steady_clock::time_point queueTime;
+    /**
+     * @brief Engine operational modes
+     */
+    enum class Mode {
+        DEVELOPMENT,    ///< Development mode with verbose logging
+        TESTING,        ///< Testing mode with mock services
+        PRODUCTION      ///< Production mode with optimizations
     };
 
-    mutable std::shared_mutex stateMutex_;
-    mutable std::mutex queueMutex_;
-    mutable std::mutex statsMutex_;
+    /**
+     * @brief Engine state machine
+     */
+    enum class State {
+        UNINITIALIZED,  ///< Engine created but not initialized
+        INITIALIZING,   ///< Initialization in progress
+        RUNNING,        ///< Engine running normally
+        STOPPING,       ///< Shutdown in progress
+        STOPPED         ///< Engine fully stopped
+    };
 
-    std::atomic<ServiceState> state_{ ServiceState::UNINITIALIZED };
-    std::atomic<bool> isRunning_{ false };
-    std::atomic<bool> isProcessingPaused_{ false };
+    /**
+     * @brief Get singleton engine instance
+     * @return Reference to global engine instance
+     */
+    static Engine& getInstance();
 
-    std::atomic<size_t> maxConnections_{ 1000 };
-    std::atomic<size_t> maxSessions_{ 10000 };
-    std::atomic<size_t> maxMessageSize_{ 1048576 }; // 1MB
-    std::atomic<size_t> maxQueueSize_{ 10000 };
-    std::atomic<size_t> processingThreads_{ 4 };
-    std::atomic<uint32_t> queueTimeout_{ 30000 }; // 30 seconds
-    std::atomic<bool> compressionEnabled_{ false };
-    std::atomic<size_t> memoryLimit_{ 0 }; // 0 = no limit
+    /**
+     * @brief Initialize the engine with configuration
+     * @param config_path Path to configuration file
+     * @return true if initialization successful
+     */
+    bool initialize(const std::string& config_path = "");
 
-    std::queue<MessageTask> messageQueue_;
-    std::condition_variable queueCondition_;
+    /**
+     * @brief Initialize with explicit configuration
+     * @param config Server configuration object
+     * @return true if initialization successful
+     */
+    bool initialize(const ServerConfig& config);
 
-    SharedPtr<ServiceLocator> serviceLocator_;
-    SharedPtr<ComponentManager> componentManager_;
+    /**
+     * @brief Start all engine services and components
+     * @return true if startup successful
+     */
+    bool start();
 
-    // Event handlers
-    std::function<Result(const ByteBuffer&, const std::string&)> onMessageHandler_;
-    std::function<void(const std::string&)> onSessionCreatedHandler_;
-    std::function<void(const std::string&, uint16_t, const std::string&)> onSessionClosedHandler_;
-    std::function<void(const Error&)> onErrorHandler_;
+    /**
+     * @brief Stop all engine services and components
+     * @param graceful Whether to wait for graceful shutdown
+     */
+    void stop(bool graceful = true);
 
-    // Statistics
-    std::atomic<uint64_t> totalMessagesProcessed_{ 0 };
-    std::atomic<uint64_t> totalBytesProcessed_{ 0 };
-    std::atomic<uint64_t> totalErrors_{ 0 };
-    std::atomic<uint64_t> queueDrops_{ 0 };
-    std::atomic<uint64_t> processingTimeTotal_{ 0 }; // microseconds
-    std::atomic<uint64_t> processingCount_{ 0 };
+    /**
+     * @brief Get current engine state
+     * @return Current engine state
+     */
+    State getState() const;
 
-    std::unordered_map<std::string, uint64_t> messageTypeStats_;
-    std::chrono::steady_clock::time_point startTime_;
-    Error lastError_;
+    /**
+     * @brief Check if engine is running
+     * @return true if engine is in RUNNING state
+     */
+    bool isRunning() const;
 
-    std::vector<std::thread> workerThreads_;
+    /**
+     * @brief Register a service with the engine
+     * @param service Service to register
+     * @param name Service identifier
+     * @return true if registration successful
+     */
+    bool registerService(std::shared_ptr<IService> service, const std::string& name);
 
-    void initializeComponents();
-    void shutdownComponents();
-    void workerThreadFunction();
-    Result processMessageInternal(const ByteBuffer& message, const std::string& sessionId);
-    void handleError(const Error& error);
-    void updateStatistics(const ByteBuffer& message, uint64_t processingTimeMicros);
-    void cleanupExpiredQueueItems();
-    bool canAcceptMessage() const;
+    /**
+     * @brief Register a component with the engine
+     * @param component Component to register
+     * @return true if registration successful
+     */
+    bool registerComponent(std::shared_ptr<IComponent> component);
+
+    /**
+     * @brief Get service by name
+     * @tparam T Service type
+     * @param name Service identifier
+     * @return Shared pointer to service, nullptr if not found
+     */
+    template<typename T>
+    std::shared_ptr<T> getService(const std::string& name) {
+        return service_locator_.resolve<T>(name);
+    }
+
+    /**
+     * @brief Get service locator for dependency injection
+     * @return Reference to service locator
+     */
+    ServiceLocator& getServiceLocator();
+
+    /**
+     * @brief Get lifecycle manager
+     * @return Reference to lifecycle manager
+     */
+    LifecycleManager& getLifecycleManager();
+
+    /**
+     * @brief Set engine operational mode
+     * @param mode New operational mode
+     */
+    void setMode(Mode mode);
+
+    /**
+     * @brief Get engine operational mode
+     * @return Current operational mode
+     */
+    Mode getMode() const;
+
+    /**
+     * @brief Get engine statistics
+     * @return Engine performance and status statistics
+     */
+    EngineStats getStatistics() const;
+
+    /**
+     * @brief Wait for engine to stop (blocking call)
+     */
+    void waitForStop();
+
+    /**
+     * @brief Trigger emergency shutdown
+     *
+     * @note Use only in critical failure scenarios
+     */
+    void emergencyShutdown();
+
+private:
+    /**
+     * @brief Private constructor for singleton pattern
+     */
+    Engine();
+
+    /**
+     * @brief Private destructor
+     */
+    ~Engine();
+
+    /**
+     * @brief Initialize core components
+     * @return true if core initialization successful
+     */
+    bool initializeCoreComponents();
+
+    /**
+     * @brief Initialize registered services
+     * @return true if all services initialized successfully
+     */
+    bool initializeServices();
+
+    /**
+     * @brief Start registered services
+     * @return true if all services started successfully
+     */
+    bool startServices();
+
+    /**
+     * @brief Stop registered services
+     * @param graceful Whether to attempt graceful shutdown
+     */
+    void stopServices(bool graceful);
+
+    /**
+     * @brief Validate component dependencies
+     * @return true if all dependencies are satisfied
+     */
+    bool validateDependencies();
+
+    /**
+     * @brief Handle component initialization errors
+     * @param component_name Name of failing component
+     * @param error Error description
+     */
+    void handleComponentError(const std::string& component_name, const std::string& error);
+
+    // Member variables
+    static std::unique_ptr<Engine> instance_;      ///< Singleton instance
+    static std::once_flag init_flag_;              ///< Thread-safe initialization flag
+
+    ServiceLocator service_locator_;               ///< Dependency injection container
+    LifecycleManager lifecycle_manager_;           ///< Lifecycle sequencing
+    std::atomic<State> state_{ State::UNINITIALIZED }; ///< Current engine state
+    std::atomic<Mode> mode_{ Mode::PRODUCTION };     ///< Operational mode
+    std::vector<std::shared_ptr<IService>> services_; ///< Registered services
+    std::vector<std::shared_ptr<IComponent>> components_; ///< Registered components
+    EngineStats stats_;                            ///< Engine statistics
 };
 
 WEBSOCKET_NAMESPACE_END
+
+#endif // WEBSOCKET_ENGINE_HPP

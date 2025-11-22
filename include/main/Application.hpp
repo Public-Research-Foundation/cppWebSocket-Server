@@ -1,259 +1,113 @@
 #pragma once
+#ifndef WEBSOCKET_APPLICATION_HPP
+#define WEBSOCKET_APPLICATION_HPP
 
-#include "../common/Types.hpp"
-#include "../common/Macros.hpp"
-#include "../common/Version.hpp"
+#include "../core/WebSocketServer.hpp"
 #include "../config/ConfigManager.hpp"
-#include "../config/RuntimeConfig.hpp"
-#include "../core/Engine.hpp"
-#include "../core/ServiceLocator.hpp"
-#include "../core/LifecycleManager.hpp"
-#include "../utils/Logger.hpp"
 #include "CommandLineParser.hpp"
-#include "Daemonizer.hpp"
 #include "SignalHandler.hpp"
+#include "Daemonizer.hpp"
 #include <memory>
 #include <atomic>
 
 WEBSOCKET_NAMESPACE_BEGIN
 
-/**
- * Main Application Class - Central coordinator for the WebSocket server
- *
- * PURPOSE:
- * - Serves as the entry point and main controller for the entire application
- * - Manages application lifecycle (initialize, run, shutdown)
- * - Coordinates all subsystems and services
- * - Handles configuration, logging, and signal management
- * - Provides singleton access to the application instance
- *
- * FEATURES:
- * - Singleton pattern for global access
- * - Graceful startup and shutdown sequencing
- * - Configuration management integration
- * - Daemon mode support for background operation
- * - Comprehensive signal handling
- * - Service locator integration
- */
+    /**
+     * @class Application
+     * @brief Main application class that orchestrates the WebSocket server lifecycle
+     *
+     * This class handles:
+     * - Command line argument parsing
+     * - Configuration loading and validation
+     * - Server initialization and shutdown
+     * - Signal handling for graceful termination
+     * - Daemon process management
+     */
     class Application {
     public:
-        /**
-         * Get singleton instance of Application
-         * Implements thread-safe singleton pattern
-         */
-        static Application& getInstance();
+        Application();
+        ~Application();
 
-        // ===== APPLICATION LIFECYCLE MANAGEMENT =====
-
-        /**
-         * Initialize application with command line arguments
-         * Performs phased initialization of all subsystems
-         *
-         * @param argc Command line argument count
-         * @param argv Command line argument values
-         * @return Result indicating success or failure
-         */
-        Result initialize(int argc = 0, char* argv[] = nullptr);
+        // Delete copy constructor and assignment operator
+        Application(const Application&) = delete;
+        Application& operator=(const Application&) = delete;
 
         /**
-         * Main application execution loop
-         * Starts all services and enters the main run loop
-         *
-         * @return Result indicating normal or abnormal termination
+         * @brief Main application entry point
+         * @param argc Argument count from main()
+         * @param argv Argument values from main()
+         * @return Exit code (0 = success, non-zero = error)
          */
-        Result run();
+        int run(int argc, char* argv[]);
 
         /**
-         * Graceful application shutdown
-         * Stops all services in proper order and cleans up resources
-         *
-         * @return Result indicating shutdown success
+         * @brief Check if application is running
+         * @return true if server is active, false otherwise
          */
-        Result shutdown();
-
-        /**
-         * Emergency shutdown for critical failures
-         * Bypasses normal shutdown sequence for immediate termination
-         *
-         * @return Result (usually indicates forced termination)
-         */
-        Result emergencyShutdown();
-
-        // ===== APPLICATION STATE QUERIES =====
-
         bool isRunning() const;
-        bool isInitialized() const;
-        std::string getStatus() const;
-
-        // ===== CONFIGURATION MANAGEMENT =====
 
         /**
-         * Set configuration file path
-         * Can be called before initialize() to use custom config
+         * @brief Request graceful shutdown
          */
-        void setConfigFile(const std::string& configPath);
+        void requestShutdown();
 
+    private:
         /**
-         * Set runtime configuration overrides
-         * These values take precedence over config file values
+         * @brief Initialize application components
+         * @return true if initialization successful, false otherwise
          */
-        void setConfigOverrides(const std::unordered_map<std::string, std::any>& overrides);
+        bool initialize();
 
         /**
-         * Reload configuration from file and apply changes
-         * Supports hot-reloading without restarting application
+         * @brief Cleanup application resources
          */
-        void reloadConfig();
-
-        // ===== COMMAND LINE INTERFACE =====
+        void shutdown();
 
         /**
-         * Parse command line arguments
-         * Extracts configuration options, flags, and operational parameters
+         * @brief Parse and validate command line arguments
+         * @param argc Argument count
+         * @param argv Argument values
+         * @return true if parsing successful, false otherwise
          */
-        void parseCommandLine(int argc, char* argv[]);
+        bool parseCommandLine(int argc, char* argv[]);
 
         /**
-         * Display help information to stdout
-         * Shows available commands, options, and usage examples
+         * @brief Load configuration from file and environment
+         * @return true if configuration loaded successfully, false otherwise
          */
-        void showHelp() const;
+        bool loadConfiguration();
 
         /**
-         * Display version information
-         * Shows application name, version, and build information
+         * @brief Apply command line overrides to configuration
+         * @return true if overrides applied successfully, false otherwise
          */
-        void showVersion() const;
-
-        // ===== DAEMON MODE SUPPORT =====
+        bool applyConfigOverrides();
 
         /**
-         * Convert application to daemon (background) process
-         * Detaches from terminal and runs in background
-         *
-         * @return Result indicating daemonization success
-         */
-        Result daemonize();
-
-        bool isDaemon() const;
-
-        // ===== SIGNAL HANDLING =====
-
-        /**
-         * Setup signal handlers for graceful shutdown
-         * Handles SIGTERM, SIGINT, SIGHUP, etc.
+         * @brief Setup signal handlers for graceful shutdown
          */
         void setupSignalHandlers();
 
         /**
-         * Handle received signal
-         * Called by signal handler for appropriate signal processing
+         * @brief Main application event loop
          */
-        void handleSignal(int signal);
-
-        // ===== SERVICE ACCESS =====
+        void mainLoop();
 
         /**
-         * Template method to access registered services
-         * Uses ServiceLocator pattern for dependency injection
-         *
-         * @tparam T Service interface type
-         * @return Shared pointer to service instance
+         * @brief Handle graceful shutdown sequence
          */
-        template<typename T>
-        SharedPtr<T> getService() const;
+        void gracefulShutdown();
 
-        // ===== APPLICATION INFORMATION =====
-
-        std::string getName() const;
-        std::string getVersion() const;
-        std::string getDescription() const;
-
-        // ===== STATISTICS AND MONITORING =====
-
-        /**
-         * Application performance and operational statistics
-         * Used for monitoring and health checking
-         */
-        struct AppStats {
-            std::chrono::steady_clock::time_point startTime;
-            std::chrono::duration<double> uptime;
-            uint64_t totalConnections;
-            uint64_t totalMessages;
-            uint64_t totalErrors;
-            double memoryUsageMB;
-        };
-
-        AppStats getStats() const;
-
-    private:
-        Application();
-        ~Application();
-
-        WEBSOCKET_DISABLE_COPY(Application)
-
-            // ===== INITIALIZATION PHASES =====
-
-            Result initializeLogging();          // Setup logging system first
-        Result initializeConfiguration();    // Load and validate configuration
-        Result initializeServices();         // Initialize core services
-        Result initializeNetwork();          // Setup networking components
-        Result initializeProtocol();         // Initialize protocol handlers
-
-        // ===== SHUTDOWN PHASES =====
-
-        Result shutdownNetwork();            // Gracefully close network connections
-        Result shutdownServices();           // Stop all services in reverse order
-        Result cleanup();                    // Final resource cleanup
-
-        // ===== INTERNAL STATE =====
-
-        std::atomic<bool> isRunning_{ false };
-        std::atomic<bool> isInitialized_{ false };
-        std::atomic<bool> isDaemon_{ false };
-        std::atomic<bool> shutdownRequested_{ false };
-
-        // ===== CORE COMPONENTS =====
-
-        SharedPtr<ConfigManager> configManager_;     // Configuration management
-        SharedPtr<RuntimeConfig> runtimeConfig_;     // Runtime configuration
-        SharedPtr<Engine> engine_;                   // Main engine coordinator
-        SharedPtr<ServiceLocator> serviceLocator_;   // Dependency injection
-        SharedPtr<LifecycleManager> lifecycleManager_; // Startup/shutdown sequencing
-
-        // ===== COMMAND LINE PROCESSING =====
-
-        CommandLineParser cmdParser_;        // CLI argument parser
-
-        // ===== APPLICATION METADATA =====
-
-        std::string configPath_;             // Active configuration file path
-        std::unordered_map<std::string, std::any> configOverrides_; // Runtime overrides
-        std::chrono::steady_clock::time_point startTime_; // Application start time
-
-        // ===== SIGNAL HANDLING =====
-
-        SignalHandler signalHandler_;        // OS signal management
-
-        // ===== ERROR HANDLING =====
-
-        Error lastError_;                    // Last encountered error
-
-        // ===== PRIVATE METHODS =====
-
-        void handleShutdown();               // Coordinated shutdown procedure
-        void handleConfigChange();           // Configuration change handler
-        void logStartupInfo();               // Log application startup details
-        void logShutdownInfo();              // Log application shutdown details
-};
-
-// Template implementation for service access
-template<typename T>
-SharedPtr<T> Application::getService() const {
-    if (!serviceLocator_) {
-        return nullptr;
-    }
-    return serviceLocator_->getService<T>();
-}
+        // Member variables
+        std::unique_ptr<WebSocketServer> server_;
+        std::unique_ptr<ConfigManager> config_manager_;
+        CommandLineOptions cmd_options_;
+        SignalHandler signal_handler_;
+        std::atomic<bool> running_{ false };
+        std::atomic<bool> shutdown_requested_{ false };
+    };
 
 WEBSOCKET_NAMESPACE_END
+
+
+#endif // WEBSOCKET_APPLICATION_HPP

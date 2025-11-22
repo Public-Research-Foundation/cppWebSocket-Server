@@ -1,105 +1,261 @@
 #pragma once
+#ifndef WEBSOCKET_LIFECYCLE_MANAGER_HPP
+#define WEBSOCKET_LIFECYCLE_MANAGER_HPP
 
 #include "../common/Types.hpp"
-#include "interfaces/IInitializable.hpp"
-#include "interfaces/IShutdownHandler.hpp"
+#include "../common/NonCopyable.hpp"
 #include <vector>
 #include <memory>
-#include <algorithm>
-#include <shared_mutex>
+#include <functional>
+#include <atomic>
 
 WEBSOCKET_NAMESPACE_BEGIN
 
-class LifecycleManager {
+// Forward declarations
+class IComponent;
+class IService;
+
+/**
+ * @class LifecycleManager
+ * @brief Manages initialization and shutdown sequencing for system components
+ *
+ * Ensures proper ordering of component lifecycle events:
+ * - Dependency-based initialization sequencing
+ * - Ordered shutdown (reverse of initialization)
+ * - Error handling and recovery during startup/shutdown
+ * - Timeout management for slow operations
+ *
+ * Design Pattern: Dependency-based Orchestrator
+ */
+class LifecycleManager : public NonCopyable {
 public:
-    static LifecycleManager& getInstance();
+    /**
+     * @brief Component lifecycle states
+     */
+    enum class State {
+        UNINITIALIZED,  ///< Component not initialized
+        INITIALIZING,   ///< Initialization in progress
+        INITIALIZED,    ///< Successfully initialized
+        STARTING,       ///< Startup in progress
+        RUNNING,        ///< Component running
+        STOPPING,       ///< Shutdown in progress
+        STOPPED         ///< Component fully stopped
+    };
 
-    // Initialization management
-    Result initializeAll();
-    Result preInitializeAll();
-    Result postInitializeAll();
+    /**
+     * @brief Lifecycle phase definitions
+     */
+    enum class Phase {
+        CORE,           ///< Core system components (logging, config)
+        INFRASTRUCTURE, ///< Infrastructure services (thread pools, networking)
+        SERVICES,       ///< Business logic services
+        APPLICATION     ///< Application-level components
+    };
 
-    // Shutdown management
-    Result shutdownAll();
-    Result gracefulShutdownAll();
-    Result emergencyShutdownAll();
+    /**
+     * @brief Lifecycle event information
+     */
+    struct LifecycleEvent {
+        std::string component_name;     ///< Name of affected component
+        State old_state;                ///< Previous state
+        State new_state;                ///< New state
+        std::string message;            ///< Event description
+        std::chrono::steady_clock::time_point timestamp; ///< Event time
+    };
 
-    // Component registration
-    void registerInitializable(const SharedPtr<IInitializable>& initializable);
-    void registerShutdownHandler(const SharedPtr<IShutdownHandler>& handler);
+    /**
+     * @brief Component registration information
+     */
+    struct ComponentInfo {
+        std::string name;                       ///< Component name
+        std::shared_ptr<IComponent> component;  ///< Component instance
+        Phase phase;                            ///< Initialization phase
+        std::vector<std::string> dependencies;  ///< Required components
+        State state{ State::UNINITIALIZED };      ///< Current state
+        std::string error_message;              ///< Last error message
+    };
 
-    void unregisterInitializable(const SharedPtr<IInitializable>& initializable);
-    void unregisterShutdownHandler(const SharedPtr<IShutdownHandler>& handler);
+    /**
+     * @brief Default constructor
+     */
+    LifecycleManager();
 
-    // State queries
-    bool isSystemInitialized() const;
-    bool isShutdownInProgress() const;
-    bool isEmergencyShutdownInProgress() const;
+    /**
+     * @brief Destructor
+     */
+    ~LifecycleManager();
 
-    // Dependency management
-    Result resolveInitializationDependencies();
-    Result resolveShutdownDependencies();
-    bool areInitializationDependenciesSatisfied() const;
-    bool areShutdownDependenciesSatisfied() const;
+    /**
+     * @brief Register a component with lifecycle management
+     * @param component Component to register
+     * @param name Component identifier
+     * @param phase Initialization phase
+     * @param dependencies List of required component names
+     * @return true if registration successful
+     */
+    bool registerComponent(std::shared_ptr<IComponent> component,
+        const std::string& name,
+        Phase phase = Phase::SERVICES,
+        const std::vector<std::string>& dependencies = {});
 
-    // Progress monitoring
-    double getInitializationProgress() const;
-    double getShutdownProgress() const;
-    std::string getInitializationStatus() const;
-    std::string getShutdownStatus() const;
+    /**
+     * @brief Initialize all registered components
+     * @return true if all components initialized successfully
+     *
+     * @note Components are initialized in dependency order within their phases
+     */
+    bool initializeAll();
 
-    // Timeout management
-    void setInitializationTimeout(uint32_t timeoutMs);
-    void setShutdownTimeout(uint32_t timeoutMs);
-    void setEmergencyShutdownTimeout(uint32_t timeoutMs);
+    /**
+     * @brief Start all registered components
+     * @return true if all components started successfully
+     */
+    bool startAll();
 
-    // Error handling
-    Error getLastInitializationError() const;
-    Error getLastShutdownError() const;
-    std::vector<Error> getAllInitializationErrors() const;
-    std::vector<Error> getAllShutdownErrors() const;
-    void clearErrors();
+    /**
+     * @brief Stop all registered components
+     * @param graceful Whether to attempt graceful shutdown
+     * @return true if all components stopped successfully
+     */
+    bool stopAll(bool graceful = true);
 
-    // Statistics
-    size_t getInitializableCount() const;
-    size_t getShutdownHandlerCount() const;
-    size_t getInitializedCount() const;
-    size_t getShutdownCount() const;
+    /**
+     * @brief Initialize a specific component
+     * @param name Component name to initialize
+     * @return true if component initialized successfully
+     */
+    bool initializeComponent(const std::string& name);
+
+    /**
+     * @brief Start a specific component
+     * @param name Component name to start
+     * @return true if component started successfully
+     */
+    bool startComponent(const std::string& name);
+
+    /**
+     * @brief Stop a specific component
+     * @param name Component name to stop
+     * @param graceful Whether to attempt graceful shutdown
+     * @return true if component stopped successfully
+     */
+    bool stopComponent(const std::string& name, bool graceful = true);
+
+    /**
+     * @brief Get component current state
+     * @param name Component name
+     * @return Current state, or UNINITIALIZED if not found
+     */
+    State getComponentState(const std::string& name) const;
+
+    /**
+     * @brief Check if all components are running
+     * @return true if all components in RUNNING state
+     */
+    bool allComponentsRunning() const;
+
+    /**
+     * @brief Check if all components are stopped
+     * @return true if all components in STOPPED state
+     */
+    bool allComponentsStopped() const;
+
+    /**
+     * @brief Get lifecycle event history
+     * @return Vector of recent lifecycle events
+     */
+    std::vector<LifecycleEvent> getEventHistory() const;
+
+    /**
+     * @brief Set initialization timeout
+     * @param timeout Timeout duration in milliseconds
+     */
+    void setInitializationTimeout(uint64_t timeout);
+
+    /**
+     * @brief Set shutdown timeout
+     * @param timeout Timeout duration in milliseconds
+     */
+    void setShutdownTimeout(uint64_t timeout);
+
+    /**
+     * @brief Add lifecycle event listener
+     * @param callback Function to call on lifecycle events
+     */
+    void addEventListener(std::function<void(const LifecycleEvent&)> callback);
+
+    /**
+     * @brief Get dependency graph as DOT format (for visualization)
+     * @return DOT format string representing component dependencies
+     */
+    std::string getDependencyGraph() const;
 
 private:
-    LifecycleManager();
-    ~LifecycleManager() = default;
+    /**
+     * @brief Find component info by name
+     * @param name Component name
+     * @return Pointer to component info, nullptr if not found
+     */
+    ComponentInfo* findComponentInfo(const std::string& name);
 
-    mutable std::shared_mutex initMutex_;
-    mutable std::shared_mutex shutdownMutex_;
+    /**
+     * @brief Find component info by name (const version)
+     * @param name Component name
+     * @return Pointer to component info, nullptr if not found
+     */
+    const ComponentInfo* findComponentInfo(const std::string& name) const;
 
-    std::vector<SharedPtr<IInitializable>> initializables_;
-    std::vector<SharedPtr<IShutdownHandler>> shutdownHandlers_;
+    /**
+     * @brief Resolve component initialization order
+     * @return Vector of component names in initialization order
+     */
+    std::vector<std::string> resolveInitializationOrder();
 
-    std::atomic<bool> systemInitialized_{ false };
-    std::atomic<bool> shutdownInProgress_{ false };
-    std::atomic<bool> emergencyShutdown_{ false };
+    /**
+     * @brief Check for circular dependencies
+     * @return true if circular dependencies detected
+     */
+    bool hasCircularDependencies() const;
 
-    std::atomic<uint32_t> initializationTimeout_{ 30000 }; // 30 seconds
-    std::atomic<uint32_t> shutdownTimeout_{ 15000 }; // 15 seconds
-    std::atomic<uint32_t> emergencyShutdownTimeout_{ 5000 }; // 5 seconds
+    /**
+     * @brief Perform topological sort of components
+     * @param components Component names to sort
+     * @return Sorted component names
+     */
+    std::vector<std::string> topologicalSort(const std::vector<std::string>& components) const;
 
-    Error lastInitializationError_;
-    Error lastShutdownError_;
-    std::vector<Error> initializationErrors_;
-    std::vector<Error> shutdownErrors_;
+    /**
+     * @brief Record lifecycle event
+     * @param event Event to record
+     */
+    void recordEvent(const LifecycleEvent& event);
 
-    void sortInitializablesByPriority();
-    void sortShutdownHandlersByPriority();
+    /**
+     * @brief Update component state
+     * @param name Component name
+     * @param new_state New state
+     * @param message State change message
+     */
+    void updateComponentState(const std::string& name, State new_state, const std::string& message = "");
 
-    Result initializeComponent(const SharedPtr<IInitializable>& initializable);
-    Result shutdownComponent(const SharedPtr<IShutdownHandler>& handler);
+    /**
+     * @brief Wait for component to reach specific state
+     * @param name Component name
+     * @param target_state Desired state
+     * @param timeout_ms Timeout in milliseconds
+     * @return true if state reached within timeout
+     */
+    bool waitForComponentState(const std::string& name, State target_state, uint64_t timeout_ms);
 
-    bool checkInitializationDependencies(const SharedPtr<IInitializable>& initializable) const;
-    bool checkShutdownDependencies(const SharedPtr<IShutdownHandler>& handler) const;
-
-    void updateInitializationProgress();
-    void updateShutdownProgress();
+    // Member variables
+    std::vector<ComponentInfo> components_;
+    std::vector<LifecycleEvent> event_history_;
+    std::vector<std::function<void(const LifecycleEvent&)>> event_listeners_;
+    uint64_t initialization_timeout_{ 30000 };  ///< 30 seconds default
+    uint64_t shutdown_timeout_{ 30000 };        ///< 30 seconds default
+    mutable std::mutex mutex_;
 };
 
 WEBSOCKET_NAMESPACE_END
+
+#endif // WEBSOCKET_LIFECYCLE_MANAGER_HPP

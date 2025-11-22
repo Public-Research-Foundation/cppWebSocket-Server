@@ -1,71 +1,121 @@
 #pragma once
+#ifndef WEBSOCKET_CONNECTION_POOL_HPP
+#define WEBSOCKET_CONNECTION_POOL_HPP
 
 #include "../common/Types.hpp"
-#include "../common/Macros.hpp"
-#include "interfaces/IConnection.hpp"
-#include <queue>
-#include <unordered_set>
+#include "WebSocketConnection.hpp"
 #include <memory>
-#include <shared_mutex>
+#include <vector>
+#include <mutex>
+#include <queue>
 
 WEBSOCKET_NAMESPACE_BEGIN
 
-class ConnectionPool {
-public:
-    explicit ConnectionPool(size_t initialSize = 10, size_t maxSize = 1000);
-    ~ConnectionPool();
+/**
+ * @class ConnectionPool
+ * @brief Manages pool of WebSocket connections for efficient resource reuse
+ *
+ * Features:
+ * - Object pooling to reduce allocation overhead
+ * - Connection reuse for better performance
+ * - Configurable pool sizes and growth strategies
+ * - Thread-safe operations
+ */
+    class ConnectionPool {
+    public:
+        /**
+         * @brief Pool configuration parameters
+         */
+        struct Config {
+            size_t initial_size{ 100 };           ///< Initial pool size
+            size_t max_size{ 1000 };              ///< Maximum pool size
+            size_t grow_size{ 50 };               ///< Growth increment when pool is empty
+            bool enable_growth{ true };           ///< Allow pool to grow dynamically
+        };
 
-    WEBSOCKET_DISABLE_COPY(ConnectionPool)
+        /**
+         * @brief Construct a new Connection Pool
+         * @param config Pool configuration
+         */
+        explicit ConnectionPool(const Config& config = Config{});
+        ~ConnectionPool();
 
-        SharedPtr<IConnection> acquire();
-    void release(SharedPtr<IConnection> connection);
+        // Delete copy constructor and assignment operator
+        ConnectionPool(const ConnectionPool&) = delete;
+        ConnectionPool& operator=(const ConnectionPool&) = delete;
 
-    bool isValid(SharedPtr<IConnection> connection) const;
-    void invalidate(SharedPtr<IConnection> connection);
+        /**
+         * @brief Acquire a connection from the pool
+         * @return Shared pointer to WebSocketConnection
+         *
+         * @note If pool is empty, may create new connection or return nullptr based on configuration
+         */
+        std::shared_ptr<WebSocketConnection> acquire();
 
-    void clear();
-    void resize(size_t newMaxSize);
+        /**
+         * @brief Release a connection back to the pool
+         * @param connection Connection to release
+         *
+         * @note Connection is reset before being returned to pool
+         */
+        void release(std::shared_ptr<WebSocketConnection> connection);
 
-    // Statistics
-    size_t getAvailableCount() const;
-    size_t getActiveCount() const;
-    size_t getMaxSize() const;
-    size_t getTotalCreated() const;
-    size_t getTotalDestroyed() const;
+        /**
+         * @brief Get current pool statistics
+         * @return Pool statistics
+         */
+        PoolStats getStats() const;
 
-    struct Stats {
-        size_t available;
-        size_t active;
-        size_t maxSize;
-        size_t totalCreated;
-        size_t totalDestroyed;
-    };
+        /**
+         * @brief Resize the connection pool
+         * @param new_size New pool size
+         * @return true if resize successful
+         */
+        bool resize(size_t new_size);
 
-    Stats getStats() const;
+        /**
+         * @brief Clear all connections from pool
+         */
+        void clear();
 
-    // Configuration
-    void setConnectionTimeout(uint32_t timeoutMs);
-    void setMaxIdleTime(uint32_t idleTimeMs);
-    void setHealthCheckInterval(uint32_t intervalMs);
+        /**
+         * @brief Get pool configuration
+         * @return Current configuration
+         */
+        Config getConfig() const;
 
-private:
-    mutable std::shared_mutex mutex_;
+        /**
+         * @brief Update pool configuration
+         * @param config New configuration
+         */
+        void setConfig(const Config& config);
 
-    std::queue<SharedPtr<IConnection>> availableConnections_;
-    std::unordered_set<SharedPtr<IConnection>> activeConnections_;
+    private:
+        /**
+         * @brief Initialize pool with initial connections
+         */
+        void initializePool();
 
-    size_t maxSize_;
-    std::atomic<size_t> totalCreated_{ 0 };
-    std::atomic<size_t> totalDestroyed_{ 0 };
+        /**
+         * @brief Create a new connection instance
+         * @return New connection instance
+         */
+        std::shared_ptr<WebSocketConnection> createConnection();
 
-    std::atomic<uint32_t> connectionTimeout_{ 30000 }; // 30 seconds
-    std::atomic<uint32_t> maxIdleTime_{ 60000 }; // 60 seconds
-    std::atomic<uint32_t> healthCheckInterval_{ 30000 }; // 30 seconds
+        /**
+         * @brief Grow the pool by configured growth size
+         */
+        void growPool();
 
-    SharedPtr<IConnection> createConnection();
-    void destroyConnection(SharedPtr<IConnection> connection);
-    void performHealthChecks();
-    bool isConnectionHealthy(SharedPtr<IConnection> connection) const;
+        // Member variables
+        mutable std::mutex mutex_;
+        std::queue<std::shared_ptr<WebSocketConnection>> available_connections_;
+        std::vector<std::shared_ptr<WebSocketConnection>> all_connections_;
+        Config config_;
+        PoolStats stats_;
+        std::atomic<size_t> active_count_{ 0 };
 };
 
 WEBSOCKET_NAMESPACE_END
+
+#endif // WEBSOCKET_CONNECTION_POOL_HPP

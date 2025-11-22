@@ -12,7 +12,7 @@ endif()
 project ("cppWebSocket-Server")
 
 # Add source to this project's executable.
-add_executable (cppWebSocket-Server "cppWebSocket-Server.cpp" "cppWebSocket-Server.h" )
+add_executable (cppWebSocket-Server "cppWebSocket-Server.cpp" "cppWebSocket-Server.h"  "src/common/GlobalConfig.cpp" "src/common/Types.cpp" "src/common/Version.cpp" "src/common/Platform.cpp" "src/common/ErrorHandling.cpp" "src/config/ConfigManager.cpp" "src/config/ConfigParser.cpp" "src/config/RuntimeConfig.cpp" "src/config/ConfigValidator.cpp" "src/constants/WebSocketConstants.cpp" "src/constants/FrameOpcodes.cpp" "src/constants/StatusCodes.cpp" "src/constants/Limits.cpp" "src/constants/ProtocolConstants.cpp" "src/constants/ErrorCodes.cpp" "src/core/Engine.cpp" "src/core/ComponentManager.cpp" "src/core/interfaces/IEngine.cpp" "src/core/interfaces/IComponent.cpp" "src/core/interfaces/IConfigurable.cpp" "src/core/interfaces/IInitializable.cpp" "src/core/interfaces/IShutdownHandler.cpp" "src/core/interfaces/ServiceBase.cpp" "src/core/interfaces/ComponentBase.cpp" "src/main/CommandLineParser.cpp" "src/main/main.cpp" "src/monitoring/HealthCheck.cpp" "src/monitoring/PerformanceMonitor.cpp" "src/main/StatsCollector.cpp" "src/main/AlertManager.cpp" "src/monitoring/AlertManager.cpp" "src/network/ServerBase.cpp")
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET cppWebSocket-Server PROPERTY CXX_STANDARD 20)

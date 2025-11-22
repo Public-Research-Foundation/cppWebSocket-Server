@@ -1,137 +1,137 @@
 #pragma once
+#ifndef WEBSOCKET_IO_THREAD_POOL_HPP
+#define WEBSOCKET_IO_THREAD_POOL_HPP
 
 #include "../common/Types.hpp"
-#include "../common/Macros.hpp"
-#include "../../utils/ThreadPool.hpp"
+#include "../common/NonCopyable.hpp"
+#include <memory>
 #include <vector>
 #include <thread>
-#include <atomic>
 #include <functional>
+
+// Forward declaration for ASIO
+namespace asio {
+    class io_context;
+}
 
 WEBSOCKET_NAMESPACE_BEGIN
 
-class IOThreadPool {
-public:
-    explicit IOThreadPool(size_t numThreads = 0); // 0 = auto-detect
-    ~IOThreadPool();
+/**
+ * @class IOThreadPool
+ * @brief Manages a pool of I/O threads for asynchronous operations
+ *
+ * Provides:
+ * - Fixed-size thread pool for I/O operations
+ * - Work stealing for load balancing
+ * - Graceful shutdown support
+ * - Thread affinity configuration
+ */
+    class IOThreadPool : public NonCopyable {
+    public:
+        using WorkHandler = std::function<void()>;
 
-    WEBSOCKET_DISABLE_COPY(IOThreadPool)
+        /**
+         * @brief Thread pool configuration
+         */
+        struct Config {
+            size_t thread_count{ 0 };              ///< Number of threads (0 = hardware_concurrency)
+            size_t queue_size_per_thread{ 1024 };  ///< Task queue size per thread
+            bool enable_affinity{ false };         ///< Enable CPU affinity
+            std::string name{ "IOThreadPool" };    ///< Pool name for logging
+        };
 
-        // Thread pool management
-        Result start();
-    Result stop();
-    Result restart();
+        /**
+         * @brief Construct a new IOThreadPool
+         * @param config Thread pool configuration
+         */
+        explicit IOThreadPool(const Config& config = Config{});
+        ~IOThreadPool();
 
-    bool isRunning() const;
-    size_t getThreadCount() const;
-    void resize(size_t numThreads);
+        /**
+         * @brief Start the thread pool
+         * @return true if started successfully
+         */
+        bool start();
 
-    // I/O task submission
-    template<typename F, typename... Args>
-    auto post(F&& f, Args&&... args)
-        -> std::future<typename std::invoke_result<F, Args...>::type>;
+        /**
+         * @brief Stop the thread pool (graceful shutdown)
+         */
+        void stop();
 
-    template<typename F, typename... Args>
-    auto dispatch(F&& f, Args&&... args)
-        -> std::future<typename std::invoke_result<F, Args...>::type>;
+        /**
+         * @brief Stop immediately (non-graceful)
+         */
+        void stopNow();
 
-    // Async I/O operations
-    Result asyncRead(SharedPtr<IConnection> connection, ByteBuffer& buffer, Callback completionCallback);
-    Result asyncWrite(SharedPtr<IConnection> connection, const ByteBuffer& data, Callback completionCallback);
-    Result asyncAccept(SharedPtr<IEndpoint> endpoint, EventCallback<SharedPtr<IConnection>> callback);
+        /**
+         * @brief Post work to the thread pool
+         * @param handler Work handler to execute
+         * @return true if work queued successfully
+         */
+        bool post(WorkHandler handler);
 
-    // Timer operations
-    Result setTimer(uint32_t milliseconds, Callcallback callback, bool recurring = false);
-    Result cancelTimer(int timerId);
+        /**
+         * @brief Get thread pool statistics
+         * @return Thread pool statistics
+         */
+        ThreadPoolStats getStats() const;
 
-    // Statistics
-    struct IOStats {
-        size_t pendingReads;
-        size_t pendingWrites;
-        size_t pendingAccepts;
-        size_t activeTimers;
-        size_t completedOperations;
-        size_t failedOperations;
-    };
+        /**
+         * @brief Check if thread pool is running
+         * @return true if pool is active
+         */
+        bool isRunning() const;
 
-    IOStats getStats() const;
+        /**
+         * @brief Get number of active threads
+         * @return Current thread count
+         */
+        size_t getThreadCount() const;
 
-    // Configuration
-    void setMaxPendingOperations(size_t maxOperations);
-    void setOperationTimeout(uint32_t timeoutMs);
-    void setLoadBalancingStrategy(const std::string& strategy);
+        /**
+         * @brief Get number of pending tasks
+         * @return Total pending tasks across all threads
+         */
+        size_t getPendingTaskCount() const;
 
-    // Worker thread management
-    void pinThreadToCore(size_t threadIndex, int coreId);
-    void setThreadPriority(size_t threadIndex, int priority);
+        /**
+         * @brief Get ASIO io_context for direct use
+         * @return Reference to ASIO io_context
+         */
+        asio::io_context& getIoContext();
 
-private:
-    std::vector<std::thread> ioThreads_;
-    SharedPtr<ThreadPool> threadPool_;
+    private:
+        /**
+         * @brief Worker thread function
+         * @param thread_index Index of this worker thread
+         */
+        void workerThread(size_t thread_index);
 
-    std::atomic<bool> isRunning_{ false };
-    std::atomic<size_t> threadCount_{ 0 };
+        /**
+         * @brief Setup thread affinity if enabled
+         * @param thread_index Index of thread for affinity
+         */
+        void setupThreadAffinity(size_t thread_index);
 
-    std::atomic<size_t> pendingReads_{ 0 };
-    std::atomic<size_t> pendingWrites_{ 0 };
-    std::atomic<size_t> pendingAccepts_{ 0 };
-    std::atomic<size_t> activeTimers_{ 0 };
-    std::atomic<size_t> completedOperations_{ 0 };
-    std::atomic<size_t> failedOperations_{ 0 };
+        /**
+         * @brief Initialize ASIO io_contexts
+         */
+        void initializeIoContexts();
 
-    std::atomic<size_t> maxPendingOperations_{ 10000 };
-    std::atomic<uint32_t> operationTimeout_{ 30000 }; // 30 seconds
+        /**
+         * @brief Cleanup resources
+         */
+        void cleanup();
 
-    void workerFunction(size_t threadIndex);
-    void initializeThreadPool(size_t numThreads);
-    void shutdownThreadPool();
-
-    // Timer management
-    struct TimerInfo {
-        int id;
-        std::chrono::steady_clock::time_point expiration;
-        uint32_t interval;
-        Callback callback;
-        bool recurring;
-        bool active;
-    };
-
-    std::unordered_map<int, TimerInfo> timers_;
-    std::atomic<int> nextTimerId_{ 1 };
-    mutable std::mutex timersMutex_;
-
-    void processTimers();
-    int createTimerId();
+        // Member variables
+        Config config_;
+        std::vector<std::unique_ptr<asio::io_context>> io_contexts_;
+        std::vector<asio::executor_work_guard<asio::io_context::executor_type>> work_guards_;
+        std::vector<std::thread> threads_;
+        std::atomic<bool> running_{ false };
+        std::atomic<size_t> next_thread_index_{ 0 };
 };
 
-// Template implementations
-template<typename F, typename... Args>
-auto IOThreadPool::post(F&& f, Args&&... args)
--> std::future<typename std::invoke_result<F, Args...>::type> {
-    if (!threadPool_) {
-        throw std::runtime_error("IOThreadPool not initialized");
-    }
-    return threadPool_->enqueue(std::forward<F>(f), std::forward<Args>(args)...);
-}
-
-template<typename F, typename... Args>
-auto IOThreadPool::dispatch(F&& f, Args&&... args)
--> std::future<typename std::invoke_result<F, Args...>::type> {
-    // For immediate execution if possible, otherwise post to queue
-    if (std::this_thread::get_id() == ioThreads_[0].get_id()) {
-        // Already in I/O thread, execute immediately
-        using return_type = typename std::invoke_result<F, Args...>::type;
-        std::promise<return_type> promise;
-        auto future = promise.get_future();
-        try {
-            promise.set_value(std::forward<F>(f)(std::forward<Args>(args)...));
-        }
-        catch (...) {
-            promise.set_exception(std::current_exception());
-        }
-        return future;
-    }
-    return post(std::forward<F>(f), std::forward<Args>(args)...);
-}
-
 WEBSOCKET_NAMESPACE_END
+
+#endif // WEBSOCKET_IO_THREAD_POOL_HPP
