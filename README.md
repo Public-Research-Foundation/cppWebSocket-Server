@@ -4,21 +4,18 @@
 
 The server strictly adheres to RFC 6455 standards with separate header files for different protocol aspects:
 
-#### WebSocketRFC.hpp - Core Protocol Constants
+#### RFC - Core Protocol Constants
 ```cpp
-namespace WebSocketRFC {
-    constexpr const char* MAGIC_STRING = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+namespace RFC {
+
     constexpr uint8_t FIN_BIT = 0x80;
     constexpr uint8_t RSV1_BIT = 0x40;
     constexpr uint8_t RSV2_BIT = 0x20;
-    constexpr uint8_t RSV3_BIT = 0x10;
-    constexpr uint8_t OPCODE_MASK = 0x0F;
-    constexpr uint8_t MASK_BIT = 0x80;
-    constexpr uint8_t PAYLOAD_LEN_MASK = 0x7F;
+
 }
 ```
 
-#### FrameOpcode.hpp - Frame Type Definitions
+#### FrameOpcode - Frame Type Definitions
 ```cpp
 namespace FrameOpcode {
     constexpr uint8_t CONTINUATION = 0x00;
@@ -39,21 +36,12 @@ namespace FrameOpcode {
 }
 ```
 
-#### CloseCode.hpp - Standard Close Status Codes
+#### CloseCode - Standard Close Status Codes
 ```cpp
-namespace CloseCode {
+namespace Code {
     constexpr uint16_t NORMAL_CLOSURE = 1000;
     constexpr uint16_t GOING_AWAY = 1001;
     constexpr uint16_t PROTOCOL_ERROR = 1002;
-    constexpr uint16_t UNSUPPORTED_DATA = 1003;
-    constexpr uint16_t NO_STATUS_RECEIVED = 1005;
-    constexpr uint16_t ABNORMAL_CLOSURE = 1006;
-    constexpr uint16_t INVALID_FRAME_PAYLOAD_DATA = 1007;
-    constexpr uint16_t POLICY_VIOLATION = 1008;
-    constexpr uint16_t MESSAGE_TOO_BIG = 1009;
-    constexpr uint16_t MANDATORY_EXTENSION = 1010;
-    constexpr uint16_t INTERNAL_SERVER_ERROR = 1011;
-    constexpr uint16_t TLS_HANDSHAKE_FAILED = 1015;
     
     constexpr bool isValidCloseCode(uint16_t code) {
         return (code >= 1000 && code <= 1011 && code != 1004 && code != 1005 && code != 1006) ||
@@ -63,19 +51,17 @@ namespace CloseCode {
 }
 ```
 
-#### ProtocolLimits.hpp - Maximum Frame Sizes and Timeouts
+#### Limits - Maximum Frame Sizes and Timeouts
 ```cpp
-namespace ProtocolLimits {
+namespace Limits {
     // Frame size limits
     constexpr size_t MAX_FRAME_HEADER_SIZE = 14; // bytes
     constexpr size_t MAX_CONTROL_FRAME_PAYLOAD = 125; // bytes
-    constexpr size_t MAX_FRAME_PAYLOAD_16BIT = 65535; // bytes
-    constexpr uint64_t MAX_FRAME_PAYLOAD_64BIT = 0x7FFFFFFFFFFFFFFF; // bytes
+
     
     // Protocol timeouts
     constexpr uint32_t HANDSHAKE_TIMEOUT_MS = 5000;
     constexpr uint32_t PONG_TIMEOUT_MS = 30000;
-    constexpr uint32_t CLOSE_TIMEOUT_MS = 5000;
     
     // Connection limits
     constexpr uint32_t MAX_HEADER_SIZE = 8192; // bytes
