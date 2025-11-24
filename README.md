@@ -4,24 +4,20 @@
 
 The server strictly adheres to RFC 6455 standards with separate header files for different protocol aspects:
 
-#### RFC - Core Protocol Constants
+#### Core Protocol Constants
 ```cpp
 namespace RFC {
 
     constexpr uint8_t FIN_BIT = 0x80;
     constexpr uint8_t RSV1_BIT = 0x40;
-    constexpr uint8_t RSV2_BIT = 0x20;
 
 }
 ```
 
-#### FrameOpcode - Frame Type Definitions
+#### Frame Type Definitions
 ```cpp
 namespace FrameOpcode {
     constexpr uint8_t CONTINUATION = 0x00;
-    constexpr uint8_t TEXT = 0x01;
-    constexpr uint8_t BINARY = 0x02;
-    constexpr uint8_t CLOSE = 0x08;
     constexpr uint8_t PING = 0x09;
     constexpr uint8_t PONG = 0x0A;
     
@@ -36,7 +32,7 @@ namespace FrameOpcode {
 }
 ```
 
-#### CloseCode - Standard Close Status Codes
+#### Standard Close Status Codes
 ```cpp
 namespace Code {
     constexpr uint16_t NORMAL_CLOSURE = 1000;
@@ -51,7 +47,7 @@ namespace Code {
 }
 ```
 
-#### Limits - Maximum Frame Sizes and Timeouts
+#### Maximum Frame Sizes and Timeouts
 ```cpp
 namespace Limits {
     // Frame size limits
@@ -69,7 +65,7 @@ namespace Limits {
 }
 ```
 
-## ⚙️ Configuration System
+## ⚙️ System
 
 ### Three-Tier Configuration Hierarchy
 
